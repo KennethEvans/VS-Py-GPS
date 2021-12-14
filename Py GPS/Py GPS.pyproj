@@ -30,6 +30,9 @@
     <Compile Include="py_gps_2.py">
       <SubType>Code</SubType>
     </Compile>
+    <Compile Include="tz_test.py">
+      <SubType>Code</SubType>
+    </Compile>
   </ItemGroup>
   <ItemGroup>
     <Interpreter Include="env\">
