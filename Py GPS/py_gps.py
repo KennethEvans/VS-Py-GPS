@@ -12,40 +12,61 @@ from timezonefinder import TimezoneFinder
 
 #from geopy import distance
 #from math import sqrt, floor
+import os
 
 import pandas as pd
 import haversine
 
-def prompt_for_file_name():
+def prompt_for_file_names():
     # Prompt for the file name
     import tkinter as tk
     from tkinter import filedialog
     import ctypes
     ctypes.windll.shcore.SetProcessDpiAwareness(1)
     root = tk.Tk()
-    root.withdraw()    
+    root.withdraw() 
+    file_names = []
     # Prompt to open a GPX file
     filetypes = (('GPX files', '*.gpx'),
         ('All files', '*.*'))
-    file_name = filedialog.askopenfilename(title='Open a GPX file', multiple=False,
+    file_names_ret = filedialog.askopenfilenames(title='Open a GPX file', multiple=True,
         filetypes=filetypes)
+    for file_name in file_names_ret:
+        file_names.append(file_name)
     root.destroy()
-    return file_name
+    return file_names
 
-def get_gpx_data(prompt=True):
-    file_name = 'C:/Users/evans/Documents/GPSLink/Polar/Kenneth_Evans_2021-12-04_12-01-33_Walking_Kensington.gpx'
+def get_files(prompt=True):
+    default_file_name = 'C:/Users/evans/Documents/GPSLink/Polar/Kenneth_Evans_2021-12-04_12-01-33_Walking_Kensington.gpx'
     if prompt:
-        file_name = prompt_for_file_name()
+        file_names = prompt_for_file_names()
+    else:
+        # Use the default
+        file_names = []
+        file_names.append(default_file_name);
+    return file_names
 
-    print(f'Opening {file_name=}')
+def get_gpx_data(file_name, prompt=True):
     gpx_file = open(file_name, 'r')
     gpx = gpxpy.parse(gpx_file)
-    return file_name, gpx
+    return gpx
 
 def get_gpx_info(gpx):
     n_trk = len(gpx.tracks)
     info = ""
+    info += f'Creator: {gpx.creator}\n'
+    info += f'Author Name: {gpx.author_name}\n'
     info += f'Number of tracks: {n_trk}\n'
+    info += f'Schema Locations:\n'
+    schema_locations = gpx.schema_locations
+    if schema_locations:
+        for loc in schema_locations:
+            info += f'    {loc}\n'
+    info += f'Namespaces:\n'
+    nsmap = gpx.nsmap
+    if nsmap:
+        for key in nsmap:
+            info += f'    {key}: {nsmap[key]}\n'
     for trk in range(n_trk):
         info += f'Track {trk}:\n'
         n_seg = len(gpx.tracks[trk].segments)
@@ -60,49 +81,50 @@ def get_gpx_info(gpx):
        info = info[0: -2]
     return info
 
-def get_data(gpx, use_data_frame=False):
+def get_data(gpx):
+    '''Currently Only does the first track and first segment'''
     tzf = TimezoneFinder()
-    if use_data_frame:
-           # Use DataFrame
-            print('Creating DataFrame')
-            data = gpx.tracks[0].segments[0].points
-            df = pd.DataFrame(columns=['lon', 'lat', 'ele', 'time'])
-            for point in data:
-                df = df.append({'lon': point.longitude, 'lat' : point.latitude,
-                    'ele' : point.elevation, 'time' : point.time}, ignore_index=True)
-            lon = df['lon']
-            lat = df['lat']
-    else:
-        # Use lists
-        print('Make a dataset for the first track, first segment')
-        lat = []
-        lon = []
-        ele = []
-        time = []
-        # Just do first track, first segment
-        n_trk = 1
-        n_seg = 1
-        for trk in range(n_trk):
-            n_seg = len(gpx.tracks[trk].segments)
-            for seg in range(n_seg):
-                points = gpx.tracks[trk].segments[seg].points
-                first = True
-                for point in points:
-                    if(first):
-                        # Get the time zone from the first point
-                        tz_name = tzf.timezone_at(lng=point.longitude, lat=point.latitude)
-                    lat.append(point.latitude)
-                    lon.append(point.longitude)
-                    ele.append(point.elevation)
-                    try:
-                        new_time = point.time.astimezone(ZoneInfo(tz_name))
-                    except:
-                        new_time = point.time.astimezone(ZoneInfo('UTC'))
-                    time.append(new_time)
+    # Use lists for the data not a DataFrame
+    lat = []
+    lon = []
+    ele = []
+    time = []
+    n_trk = len(gpx.tracks)
+    for trk in range(n_trk):
+        n_seg = len(gpx.tracks[trk].segments)
+        first = True  # Flag to get the timezone for this track
+        for seg in range(n_seg):
+            points = gpx.tracks[trk].segments[seg].points
+            for point in points:
+                if(first):
+                    # Get the time zone from the first point in first segment
+                    tz_name = tzf.timezone_at(lng=point.longitude, lat=point.latitude)
+                    first = False
+                lat.append(point.latitude)
+                lon.append(point.longitude)
+                ele.append(point.elevation)
+                try:
+                    new_time = point.time.astimezone(ZoneInfo(tz_name))
+                except:
+                    new_time = point.time.astimezone(ZoneInfo('UTC'))
+                time.append(new_time)
     return lat, lon, ele, time
 
+def get_track_info(lat, lon, ele, time):
+    start = (lat[0], lon[0])
+    end = (lat[-1], lon[-1])
+    start_time = time[0]
+    end_time = time[-1]
+    speed, total_dist, total_time = get_speed(lat, lon, time)
+    avg_speed = total_dist / total_time * 60
+    info = ""
+    info += f'start: lat={start[0]} lon={start[1]} time={start_time}\n'
+    info += f'end  : lat={end[0]} lon={end[1]} time={end_time}\n'
+    info += f'{total_dist=:.2f} mi, {total_time=:.1f} min, avg_speed={avg_speed:.2f} mph'
+    return info
+
 def plot_track(lat, lon, title='GPX Track'):
-    print('Plotting track')
+    #print('Plotting track')
     plt.figure(figsize=(10,6))
     # Is necessary to not have scientific notation and offset
     #plt.ticklabel_format(useOffset=False, style='plain')
@@ -114,7 +136,7 @@ def plot_track(lat, lon, title='GPX Track'):
     plt.show()
 
 def plot_speed(time, speed, avg_speed=None, title='Speed vs Time'):
-    print('Plotting speed')
+    #print('Plotting speed')
     if(avg_speed):
         avg_speed_array = []
         lenSpeed = len(speed)
@@ -194,34 +216,32 @@ def get_speed(lat, lon, time):
         #    print(f'{i=} {time_delta=} {speed[i]=} {time[i]=}')
     return speed, total_dist, total_time
 
-def get_info(lat, lon, ele, time):
-    start = (lat[0], lon[0])
-    end = (lat[-1], lon[-1])
-    start_time = time[0]
-    end_time = time[-1]
-    speed, total_dist, total_time = get_speed(lat, lon, time)
-    avg_speed = total_dist / total_time * 60
-    info = ""
-    info += f'start: lat={start[0]} lon={start[1]} time={start_time}\n'
-    info += f'end  : lat={end[0]} lon={end[1]} time={end_time}\n'
-    info += f'{total_dist=:.2f} mi, {total_time=:.1f} min, avg_speed={avg_speed:.2f} mph'
-    return info
-
 def main():
-    file_name, gpx = get_gpx_data(prompt=False)
-    lat, lon, ele, time = get_data(gpx)
-    # Print gpx info
-    print(f'\nGPX Information\n{get_gpx_info(gpx)}')
-    #for i in range(10):
-    # Print track info
-    print(f'\nTrack Information\n{get_info(lat, lon, ele, time)}')
-    print()
-    #for i in range(10):
-    #    print(f'{i} {time[i]=} tz={time[i].tzinfo}')
-    #plot_track(lat, lon, title=file_name)
-    speed, total_dist, total_time = get_speed(lat, lon, time)
-    avg_speed = total_dist / total_time * 60
-    plot_speed(time, speed, avg_speed, title=f'Speed vs. Trackpoint Index\n{file_name}')
+    # Set prompt to use default filename or prompt with a FileDialog
+    prompt = True
+    file_names = get_files(prompt=prompt)
+    nFiles = len(file_names)
+    for file_name in file_names:
+        short_name = os.path.basename(file_name)
+        print(f'{file_name=}')
+        gpx = get_gpx_data(file_name, prompt=prompt)
+        # Print gpx info
+        gpx_info = get_gpx_info(gpx);
+        print(f'GPX Information\n{gpx_info}')
+        lat, lon, ele, time = get_data(gpx)
+        if len(lat) == 0:
+            print('No trackpoints found\n')
+            continue
+        # Print track info
+        track_info = get_track_info(lat, lon, ele, time)
+        print(f'Track Information\n{track_info}')
+        print()
+        #for i in range(10):
+        #    print(f'{i} {time[i]=} tz={time[i].tzinfo}')
+        #plot_track(lat, lon, title=file_name)
+        speed, total_dist, total_time = get_speed(lat, lon, time)
+        avg_speed = total_dist / total_time * 60
+        plot_speed(time, speed, avg_speed, title=f'Speed vs. Trackpoint Index\n{file_name}')
 
 if __name__ == "__main__":
     main()
