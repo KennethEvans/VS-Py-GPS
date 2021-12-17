@@ -10,6 +10,8 @@ import datetime
 from zoneinfo import ZoneInfo
 from timezonefinder import TimezoneFinder
 
+import xml.etree.ElementTree as ET
+
 #from geopy import distance
 #from math import sqrt, floor
 import os
@@ -46,9 +48,39 @@ def get_files(prompt=True):
         file_names.append(default_file_name);
     return file_names
 
-def get_gpx_data(file_name, prompt=True):
-    gpx_file = open(file_name, 'r')
-    gpx = gpxpy.parse(gpx_file)
+def get_gpx_data(file_name, reparse=True):
+    '''Parses the file and returns a gpx object. GpxPy doesn't handle the case
+where the default namespace is not GPX/1/1. This is overcome by parsing the file
+with xml.etree.ElementTree and specifying the default namespace to be GPX/1/1,
+then passing the xml str to gpxpy.parse(). This step is not taken and the file
+is read directly if reparse=False.
+    
+        Parameters
+        ----------
+        file_name : str
+            Full path to the GPX file.
+            default: None
+        reparse : boolean
+            reparse : Whether to reparse the file to set the default namespace
+                      or not.
+            default : True
+    
+        Returns
+        ------
+        return : gpxpy.gpx.GPX()
+            The GpxPy gpx object
+    '''
+    if reparse:
+        # Ensure GPX/1/1 is the default namespace
+        ET.register_namespace('', "http://www.topografix.com/GPX/1/1")
+        tree = ET.parse(file_name)
+        root = tree.getroot();
+        xml = ET.tostring(root, encoding='unicode');
+        # Parse the xml string
+        gpx = gpxpy.parse(xml)
+    else:
+        gpx_file = open(file_name, 'r')
+        gpx = gpxpy.parse(gpx_file)
     return gpx
 
 def get_gpx_info(gpx):
@@ -135,7 +167,7 @@ def plot_track(lat, lon, title='GPX Track'):
     plt.ylabel('latitude, deg')
     plt.show()
 
-def plot_speed(time, speed, avg_speed=None, title='Speed vs Time'):
+def plot_speed(time, speed, avg_speed=None, max_speed=5.0, title='Speed vs Time'):
     #print('Plotting speed')
     if(avg_speed):
         avg_speed_array = []
@@ -182,10 +214,11 @@ def plot_speed(time, speed, avg_speed=None, title='Speed vs Time'):
     plt.plot(time, moving_avg, 'orangered', label=f'moving_average({window_size})')
     #plt.plot(time, moving_avg2, 'yellow', label=f'moving_average({window_size2})')
     if avg_speed:
-        plt.plot(time, avg_speed_array, 'orange', label='avg speed')
+        plt.plot(time, avg_speed_array, 'orange', label=f'avg speed ({avg_speed:.1f} mph)')
     plt.title(title)
     plt.xlabel('Time (dd hh:mm)')
     plt.ylabel('Speed, mph')
+    plt.ylim(0, max_speed)
     plt.legend(loc='upper right', framealpha=0.6)
     plt.tight_layout()
     plt.show()
@@ -224,7 +257,7 @@ def main():
     for file_name in file_names:
         short_name = os.path.basename(file_name)
         print(f'{file_name=}')
-        gpx = get_gpx_data(file_name, prompt=prompt)
+        gpx = get_gpx_data(file_name)
         # Print gpx info
         gpx_info = get_gpx_info(gpx);
         print(f'GPX Information\n{gpx_info}')
