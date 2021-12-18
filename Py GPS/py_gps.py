@@ -48,7 +48,7 @@ def get_files(prompt=True):
         file_names.append(default_file_name);
     return file_names
 
-def get_gpx_data(file_name, reparse=True):
+def get_gpx(file_name, reparse=True):
     '''Parses the file and returns a gpx object. GpxPy doesn't handle the case
 where the default namespace is not GPX/1/1. This is overcome by parsing the file
 with xml.etree.ElementTree and specifying the default namespace to be GPX/1/1,
@@ -81,6 +81,7 @@ is read directly if reparse=False.
     else:
         gpx_file = open(file_name, 'r')
         gpx = gpxpy.parse(gpx_file)
+        gpx_file.close();
     return gpx
 
 def get_gpx_info(gpx):
@@ -113,13 +114,14 @@ def get_gpx_info(gpx):
        info = info[0: -2]
     return info
 
-def get_data(gpx):
+def get_gpx_data(gpx):
     '''Currently Only does the first track and first segment'''
     tzf = TimezoneFinder()
     # Use lists for the data not a DataFrame
     lat = []
     lon = []
     ele = []
+    hr = []
     time = []
     n_trk = len(gpx.tracks)
     for trk in range(n_trk):
@@ -135,12 +137,29 @@ def get_data(gpx):
                 lat.append(point.latitude)
                 lon.append(point.longitude)
                 ele.append(point.elevation)
+                # Get HR
+                hr_val = 0
+                extensions = point.extensions
+                found = False
+                for extension in extensions:
+                    if not found:
+                        # Find all children
+                        elems = extension.findall('.//')
+                        for elem in elems:
+                            if elem.tag.endswith('}hr'):
+                                hr_val = int(elem.text)
+                                found = True
+                                break
+                    else:
+                        break
+                hr.append(hr_val)
+                # Get time
                 try:
                     new_time = point.time.astimezone(ZoneInfo(tz_name))
                 except:
                     new_time = point.time.astimezone(ZoneInfo('UTC'))
                 time.append(new_time)
-    return lat, lon, ele, time
+    return lat, lon, ele, hr, time
 
 def get_track_info(lat, lon, ele, time):
     start = (lat[0], lon[0])
@@ -167,7 +186,7 @@ def plot_track(lat, lon, title='GPX Track'):
     plt.ylabel('latitude, deg')
     plt.show()
 
-def plot_speed(time, speed, avg_speed=None, max_speed=5.0, title='Speed vs Time'):
+def plot_speed(time, speed, hr, avg_speed=None, max_speed=5.0, title='Speed vs Time'):
     #print('Plotting speed')
     if(avg_speed):
         avg_speed_array = []
@@ -206,20 +225,30 @@ def plot_speed(time, speed, avg_speed=None, max_speed=5.0, title='Speed vs Time'
             window_average = sum(this_window) / window_size2
         moving_avg2.append(window_average)
 
-    plt.figure(figsize=(10,6))
+    fig = plt.figure(figsize=(10,6))
     # Is necessary to not have scientific notation and offset
     #plt.ticklabel_format(useOffset=False, style='plain')
     plt.ticklabel_format(useOffset=False)
-    plt.plot(time, speed, 'dodgerblue', label='speed')
-    plt.plot(time, moving_avg, 'orangered', label=f'moving_average({window_size})')
+    plt.plot(time, speed, 'lightskyblue', label='speed')
+    plt.plot(time, moving_avg, 'dodgerblue', label=f'moving_average({window_size})')
     #plt.plot(time, moving_avg2, 'yellow', label=f'moving_average({window_size2})')
     if avg_speed:
-        plt.plot(time, avg_speed_array, 'orange', label=f'avg speed ({avg_speed:.1f} mph)')
+        plt.plot(time, avg_speed_array, 'mediumblue', label=f'avg speed ({avg_speed:.1f} mph)')
     plt.title(title)
     plt.xlabel('Time (dd hh:mm)')
     plt.ylabel('Speed, mph')
     plt.ylim(0, max_speed)
-    plt.legend(loc='upper right', framealpha=0.6)
+    # HR
+    max_hr = max(hr)
+    if max_hr != 0:
+        ax2 = plt.gca().twinx()
+        ax2.plot(time, hr, 'red', label='hr')
+        ax2.set_ylabel('HR, bpm');
+        ax2.set_ylim(0, round(max_hr + 10))
+    # Manually set figure legend (owing to two axes)
+    ax = plt.gca()
+    fig.legend(loc='lower left', framealpha=0.6, bbox_to_anchor=(0,0),
+              bbox_transform=ax.transAxes)
     plt.tight_layout()
     plt.show()
 
@@ -251,17 +280,17 @@ def get_speed(lat, lon, time):
 
 def main():
     # Set prompt to use default filename or prompt with a FileDialog
-    prompt = True
+    prompt = False
     file_names = get_files(prompt=prompt)
     nFiles = len(file_names)
     for file_name in file_names:
         short_name = os.path.basename(file_name)
         print(f'{file_name=}')
-        gpx = get_gpx_data(file_name)
+        gpx = get_gpx(file_name)
         # Print gpx info
         gpx_info = get_gpx_info(gpx);
         print(f'GPX Information\n{gpx_info}')
-        lat, lon, ele, time = get_data(gpx)
+        lat, lon, ele, hr, time = get_gpx_data(gpx)
         if len(lat) == 0:
             print('No trackpoints found\n')
             continue
@@ -274,7 +303,7 @@ def main():
         #plot_track(lat, lon, title=file_name)
         speed, total_dist, total_time = get_speed(lat, lon, time)
         avg_speed = total_dist / total_time * 60
-        plot_speed(time, speed, avg_speed, title=f'Speed vs. Trackpoint Index\n{file_name}')
+        plot_speed(time, speed, hr, avg_speed, title=f'Speed vs. Trackpoint Index\n{file_name}')
 
 if __name__ == "__main__":
     main()

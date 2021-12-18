@@ -20,6 +20,12 @@ def test(file_name):
         root = tree.getroot();
         xml = ET.tostring(root, encoding='unicode');
         print(xml[0:128])
+        scratch_output = '/scratch/AAA/Python/ElementTreeParseResult.xml'
+        print(f'Writing {scratch_output}')
+        f = open(scratch_output, "w")
+        f.write(xml)
+        f.close()
+
     
 def main():
     default_file_name = 'C:/Users/evans/Documents/GPSLink/Polar/Kenneth_Evans_2021-12-12_13-21-52_Walking_Rehab.gpx'
