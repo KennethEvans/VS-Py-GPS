@@ -17,7 +17,8 @@ import xml.etree.ElementTree as ET
 import os
 
 import pandas as pd
-import haversine
+
+import speed as s
 
 def prompt_for_file_names():
     # Prompt for the file name
@@ -166,8 +167,7 @@ def get_track_info(lat, lon, ele, time):
     end = (lat[-1], lon[-1])
     start_time = time[0]
     end_time = time[-1]
-    speed, total_dist, total_time = get_speed(lat, lon, time)
-    avg_speed = total_dist / total_time * 60
+    speed, total_dist, total_time, avg_speed = s.get_speed(lat, lon, time)
     info = ""
     info += f'start: lat={start[0]} lon={start[1]} time={start_time}\n'
     info += f'end  : lat={end[0]} lon={end[1]} time={end_time}\n'
@@ -186,8 +186,39 @@ def plot_track(lat, lon, title='GPX Track'):
     plt.ylabel('latitude, deg')
     plt.show()
 
-def plot_speed(time, speed, hr, avg_speed=None, max_speed=5.0, title='Speed vs Time'):
-    #print('Plotting speed')
+def plot_speed_hr(time, speed, hr, avg_speed=None, max_speed=5.0, title='Speed and Heart Rate vs Time'):
+    '''Plots speed and HR. Also plots avg_speed if given.'''
+    if(avg_speed):
+        avg_speed_array = []
+        lenSpeed = len(speed)
+        for i in range(lenSpeed):
+            avg_speed_array.append(avg_speed)
+    fig = plt.figure(figsize=(10,6))
+    plt.ticklabel_format(useOffset=False)
+    plt.plot(time, speed, 'dodgerblue', label='speed')
+    if avg_speed:
+        plt.plot(time, avg_speed_array, 'mediumblue', label=f'avg speed ({avg_speed:.1f} mph)')
+    plt.title(title)
+    plt.xlabel('Time (dd hh:mm)')
+    plt.ylabel('Speed, mph')
+    plt.ylim(0, max_speed)
+    # HR
+    max_hr = max(hr)
+    if max_hr != 0:
+        ax2 = plt.gca().twinx()
+        ax2.plot(time, hr, 'red', label='hr')
+        ax2.set_ylabel('HR, bpm');
+        ax2.set_ylim(0, round(max_hr + 10))
+    # Manually set figure legend (owing to two axes)
+    ax = plt.gca()
+    fig.legend(loc='lower left', framealpha=0.6, bbox_to_anchor=(0,0),
+              bbox_transform=ax.transAxes)
+    plt.tight_layout()
+    plt.show()
+
+def plot_speed_hr_1(time, speed, hr, avg_speed=None, max_speed=5.0, title='Speed vs Time'):
+    '''Plots speed and HR. Calculates moving averages for speed.
+    Also plots avg_speed if given.'''
     if(avg_speed):
         avg_speed_array = []
         lenSpeed = len(speed)
@@ -226,8 +257,6 @@ def plot_speed(time, speed, hr, avg_speed=None, max_speed=5.0, title='Speed vs T
         moving_avg2.append(window_average)
 
     fig = plt.figure(figsize=(10,6))
-    # Is necessary to not have scientific notation and offset
-    #plt.ticklabel_format(useOffset=False, style='plain')
     plt.ticklabel_format(useOffset=False)
     plt.plot(time, speed, 'lightskyblue', label='speed')
     plt.plot(time, moving_avg, 'dodgerblue', label=f'moving_average({window_size})')
@@ -252,35 +281,9 @@ def plot_speed(time, speed, hr, avg_speed=None, max_speed=5.0, title='Speed vs T
     plt.tight_layout()
     plt.show()
 
-def get_speed(lat, lon, time):
-    MI_PER_M = 0.000621371
-    SEC_PER_HR = 3600
-    SEC_PER_MIN = 60
-    lenData = len(lat)
-    dist = []
-    speed = []
-    total_dist = 0
-    total_time = 0
-    for i in range(lenData):
-        if i == 0:
-            speed.append(0)
-            continue
-        dist_hav = haversine.haversine((lat[i], lon[i]), (lat[i - 1], lon[i - 1]), unit='mi')
-        dist.append(dist_hav)
-        total_dist = total_dist + dist_hav
-        time_delta = (time[i] - time[i - 1]).total_seconds()
-        total_time = total_time + time_delta / SEC_PER_MIN
-        if time_delta == 0:
-            speed.append(0.)
-        else:
-            speed.append(dist_hav / time_delta * SEC_PER_HR)
-        #if i < 100:
-        #    print(f'{i=} {time_delta=} {speed[i]=} {time[i]=}')
-    return speed, total_dist, total_time
-
 def main():
     # Set prompt to use default filename or prompt with a FileDialog
-    prompt = False
+    prompt = True
     file_names = get_files(prompt=prompt)
     nFiles = len(file_names)
     for file_name in file_names:
@@ -301,9 +304,13 @@ def main():
         #for i in range(10):
         #    print(f'{i} {time[i]=} tz={time[i].tzinfo}')
         #plot_track(lat, lon, title=file_name)
-        speed, total_dist, total_time = get_speed(lat, lon, time)
-        avg_speed = total_dist / total_time * 60
-        plot_speed(time, speed, hr, avg_speed, title=f'Speed vs. Trackpoint Index\n{file_name}')
+        speed, total_dist, total_time, avg_speed = s.get_speed(lat, lon, time)
+        speed_proc = s.process_speed(time, speed)
+        if False:
+            s.plot_speed(time, speed, speed_proc, avg_speed,
+                title=f'Speed\n{file_name}')
+        plot_speed_hr(time, speed_proc, hr, avg_speed,
+                title=f'Speed and Heart Rate\n{file_name}')
 
 if __name__ == "__main__":
     main()
