@@ -65,7 +65,7 @@ def write_speed_file(speed, file):
             f.write(f'{float(val):.6}')
             f.write('\n')
 
-def process_speed(time, speed):
+def process_speed(time, speed, fs=1):
     lenSpeed = len(speed)
     if False:
         # Moving average 1
@@ -85,9 +85,8 @@ def process_speed(time, speed):
             moving_avg.append(window_average)
     if True:
         # Butterworth
-        order = 6
-        fs = 1  
-        cutoff = .04
+        order = 5
+        cutoff = .04 * fs
         b, a = butter_lowpass(cutoff, fs, order)
         val = filter_butter_lowpass(speed, cutoff, fs, order)
     return val

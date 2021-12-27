@@ -305,12 +305,14 @@ def main():
         #    print(f'{i} {time[i]=} tz={time[i].tzinfo}')
         #plot_track(lat, lon, title=file_name)
         speed, total_dist, total_time, avg_speed = s.get_speed(lat, lon, time)
+        fs = len(time) / total_time
         speed_proc = s.process_speed(time, speed)
+        info = f'{total_dist=:.2f} mi, {total_time=:.1f} min, avg_speed={avg_speed:.2f} mph'
         if False:
             s.plot_speed(time, speed, speed_proc, avg_speed,
-                title=f'Speed\n{file_name}')
+                title=f'Speed\n{file_name}\n{info}')
         plot_speed_hr(time, speed_proc, hr, avg_speed,
-                title=f'Speed and Heart Rate\n{file_name}')
+                title=f'Speed and Heart Rate\n{file_name}\n{info}')
 
 if __name__ == "__main__":
     main()
